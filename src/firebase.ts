@@ -1,10 +1,12 @@
 import { initializeApp } from 'firebase/app';
 import { 
-  getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged, User 
+  getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged, User,
+  signInWithEmailAndPassword, createUserWithEmailAndPassword, signInAnonymously,
+  sendPasswordResetEmail
 } from 'firebase/auth';
 import { 
   getFirestore, collection, query, where, onSnapshot, addDoc, 
-  deleteDoc, doc, setDoc, getDoc, getDocFromServer 
+  deleteDoc, doc, setDoc, getDoc, getDocFromServer, writeBatch, getDocs
 } from 'firebase/firestore';
 import firebaseConfig from '../firebase-applet-config.json';
 
@@ -15,7 +17,9 @@ export const googleProvider = new GoogleAuthProvider();
 
 export { 
   signInWithPopup, signOut, onAuthStateChanged, 
-  collection, query, where, onSnapshot, addDoc, deleteDoc, doc, setDoc, getDoc 
+  collection, query, where, onSnapshot, addDoc, deleteDoc, doc, setDoc, getDoc,
+  signInWithEmailAndPassword, createUserWithEmailAndPassword, signInAnonymously,
+  sendPasswordResetEmail, writeBatch, getDocs
 };
 export type { User };
 

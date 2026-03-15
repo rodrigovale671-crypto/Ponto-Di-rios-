@@ -58,9 +58,16 @@ export const Dashboard = ({
       end: endOfMonth(currentMonth)
     });
 
+    // Group attendance by date for O(N) lookup
+    const attendanceByDate = attendance.reduce((acc, record) => {
+      if (!acc[record.date]) acc[record.date] = [];
+      acc[record.date].push(record);
+      return acc;
+    }, {} as Record<string, AttendanceRecord[]>);
+
     return days.map(day => {
       const dayStr = format(day, 'yyyy-MM-dd');
-      const dayRecords = attendance.filter(a => a.date === dayStr);
+      const dayRecords = attendanceByDate[dayStr] || [];
       return {
         name: format(day, 'dd'),
         presencas: dayRecords.filter(r => r.type === 'D').length,

@@ -2,7 +2,9 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { 
   auth, db, googleProvider, signInWithPopup, signOut, onAuthStateChanged, 
   collection, query, where, onSnapshot, addDoc, deleteDoc, doc, setDoc,
-  OperationType, handleFirestoreError, User 
+  OperationType, handleFirestoreError, User,
+  signInWithEmailAndPassword, createUserWithEmailAndPassword, signInAnonymously,
+  sendPasswordResetEmail, writeBatch, getDocs
 } from './firebase';
 import { 
   format, startOfMonth, endOfMonth, eachDayOfInterval, parseISO 
@@ -11,7 +13,7 @@ import { ptBR } from 'date-fns/locale';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { 
-  Calendar as CalendarIcon, LogIn, Menu, Settings, X, CreditCard, Download, Upload, Sun, Moon, Fingerprint, ShieldCheck, LogOut, Lock, ChevronLeft
+  Calendar as CalendarIcon, LogIn, Menu, Settings, X, CreditCard, Download, Upload, Sun, Moon, Fingerprint, ShieldCheck, LogOut, Lock, ChevronLeft, Trash2
 } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
 
@@ -62,6 +64,9 @@ function AppContent() {
   const [activeView, setActiveView] = useState<'dashboard' | 'team' | 'calendar'>('dashboard');
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const [loginLoading, setLoginLoading] = useState(false);
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [isRegistering, setIsRegistering] = useState(false);
   
   useEffect(() => {
     (window as any).openSettings = () => setIsSettingsOpen(true);
@@ -144,21 +149,115 @@ function AppContent() {
 
   const showToast = (message: string, type: 'success' | 'error' = 'success') => setToast({ message, type });
 
-  const handleLogin = async () => { 
+  const handleLogin = async (e: React.FormEvent) => { 
+    e.preventDefault();
+    if (!email || !password) return showToast('Preencha todos os campos', 'error');
     setLoginLoading(true);
     try { 
-      await signInWithPopup(auth, googleProvider); 
+      if (isRegistering) {
+        await createUserWithEmailAndPassword(auth, email, password);
+        showToast('Conta criada com sucesso!');
+      } else {
+        await signInWithEmailAndPassword(auth, email, password);
+      }
     } catch (err: any) { 
-      console.error('Login error', err);
-      let msg = 'Erro ao entrar com Google.';
-      if (err.code === 'auth/popup-blocked') msg = 'O popup foi bloqueado pelo navegador.';
-      if (err.code === 'auth/cancelled-popup-request') msg = 'A requisição foi cancelada.';
+      console.error(err);
+      let msg = 'Erro ao entrar';
+      if (err.code === 'auth/user-not-found') msg = 'Usuário não encontrado';
+      if (err.code === 'auth/wrong-password') msg = 'Senha incorreta';
+      if (err.code === 'auth/email-already-in-use') msg = 'E-mail já cadastrado';
+      if (err.code === 'auth/weak-password') msg = 'Senha muito fraca';
+      if (err.code === 'auth/operation-not-allowed') msg = 'Login por e-mail não está habilitado no Firebase Console';
+      if (err.code === 'auth/invalid-email') msg = 'E-mail inválido';
       showToast(msg, 'error');
     } finally {
       setLoginLoading(false);
     }
   };
-  const handleLogout = () => signOut(auth);
+
+  const handleResetPassword = async () => {
+    if (!email) return showToast('Digite seu e-mail para recuperar a senha', 'error');
+    try {
+      await sendPasswordResetEmail(auth, email);
+      showToast('E-mail de recuperação enviado!');
+    } catch (err: any) {
+      console.error(err);
+      showToast('Erro ao enviar e-mail de recuperação', 'error');
+    }
+  };
+
+  const handleAnonymousLogin = async () => {
+    setLoginLoading(true);
+    try {
+      await signInAnonymously(auth);
+    } catch (err: any) {
+      console.error(err);
+      let msg = 'Erro ao entrar como visitante';
+      if (err.code === 'auth/operation-not-allowed') msg = 'Login anônimo não está habilitado no Firebase Console';
+      showToast(msg, 'error');
+    } finally {
+      setLoginLoading(false);
+    }
+  };
+  const exportData = () => {
+    const data = {
+      employees,
+      attendance,
+      exportDate: new Date().toISOString(),
+      user: {
+        uid: user?.uid,
+        email: user?.email,
+        isAnonymous: user?.isAnonymous
+      }
+    };
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `PontoFacil_Backup_${format(new Date(), 'yyyy-MM-dd')}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    showToast('Backup exportado com sucesso!');
+  };
+
+  const clearAllData = async () => {
+    if (!user) return;
+    setConfirmModal({
+      isOpen: true,
+      title: 'LIMPAR TODOS OS DADOS',
+      message: 'ATENÇÃO: Isso apagará permanentEMENTE todos os funcionários e registros de ponto. Esta ação não pode ser desfeita. Deseja continuar?',
+      onConfirm: async () => {
+        try {
+          const batch = writeBatch(db);
+          const empSnap = await getDocs(query(collection(db, 'employees'), where('ownerId', '==', user.uid)));
+          const attSnap = await getDocs(query(collection(db, 'attendance'), where('ownerId', '==', user.uid)));
+          
+          empSnap.forEach(d => batch.delete(d.ref));
+          attSnap.forEach(d => batch.delete(d.ref));
+          
+          await batch.commit();
+          showToast('Todos os dados foram apagados.');
+          setSelectedEmployeeId(null);
+        } catch (err) {
+          console.error(err);
+          showToast('Erro ao limpar dados', 'error');
+        }
+        setConfirmModal(prev => ({ ...prev, isOpen: false }));
+      }
+    });
+  };
+
+  const handleLogout = () => {
+    setConfirmModal({
+      isOpen: true,
+      title: 'Sair da Conta',
+      message: 'Tem certeza que deseja sair? Se você estiver usando uma conta de visitante, seus dados podem ser perdidos se você não vincular um e-mail.',
+      onConfirm: () => {
+        signOut(auth);
+        setConfirmModal(prev => ({ ...prev, isOpen: false }));
+      }
+    });
+  };
 
   const addEmployee = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -321,21 +420,85 @@ function AppContent() {
           <h1 className="text-4xl font-black tracking-tighter text-slate-900 dark:text-slate-100">PontoFácil</h1>
           <p className="text-slate-500 dark:text-slate-400 font-medium">Gestão de equipe simplificada</p>
         </div>
-        <Button 
-          onClick={handleLogin} 
-          disabled={loginLoading}
-          className="w-full py-7 text-lg gap-3 rounded-2xl shadow-lg shadow-slate-900/10"
-        >
-          {loginLoading ? (
-            <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
-          ) : (
-            <>
-              <LogIn size={22} /> 
-              <span>Entrar com Google</span>
-            </>
+
+        <form onSubmit={handleLogin} className="space-y-4 text-left">
+          <div className="space-y-1">
+            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 px-1">E-mail</label>
+            <input 
+              type="email" 
+              value={email} 
+              onChange={e => setEmail(e.target.value)} 
+              className="pro-input h-12 bg-slate-50 dark:bg-slate-800 border-none rounded-xl font-bold w-full" 
+              placeholder="seu@email.com" 
+              required 
+            />
+          </div>
+          <div className="space-y-1">
+            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 px-1">Senha</label>
+            <input 
+              type="password" 
+              value={password} 
+              onChange={e => setPassword(e.target.value)} 
+              className="pro-input h-12 bg-slate-50 dark:bg-slate-800 border-none rounded-xl font-bold w-full" 
+              placeholder="••••••••" 
+              required 
+            />
+          </div>
+          
+          <Button 
+            type="submit"
+            disabled={loginLoading}
+            className="w-full py-7 text-lg gap-3 rounded-2xl shadow-lg shadow-slate-900/10"
+          >
+            {loginLoading ? (
+              <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+            ) : (
+              <>
+                <LogIn size={22} /> 
+                <span>{isRegistering ? 'Criar Conta' : 'Entrar'}</span>
+              </>
+            )}
+          </Button>
+
+          {!isRegistering && (
+            <button 
+              type="button"
+              onClick={handleResetPassword}
+              className="w-full text-xs font-bold text-slate-400 hover:text-slate-600 transition-colors"
+            >
+              Esqueci minha senha
+            </button>
           )}
-        </Button>
-        <p className="text-[10px] text-slate-400 uppercase tracking-widest font-bold">Acesso seguro via Google Auth</p>
+        </form>
+
+        <div className="flex flex-col gap-4">
+          <button 
+            onClick={() => setIsRegistering(!isRegistering)}
+            className="text-sm font-bold text-slate-500 hover:text-slate-900 dark:hover:text-slate-100 transition-colors"
+          >
+            {isRegistering ? 'Já tem uma conta? Entre aqui' : 'Não tem conta? Cadastre-se'}
+          </button>
+          
+          <div className="relative">
+            <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-slate-200 dark:border-slate-800"></div></div>
+            <div className="relative flex justify-center text-[10px] uppercase font-black tracking-widest bg-white dark:bg-slate-900 px-2 text-slate-400">Ou</div>
+          </div>
+
+          <Button 
+            variant="ghost" 
+            onClick={handleAnonymousLogin}
+            disabled={loginLoading}
+            className="w-full h-12 rounded-xl font-bold text-slate-500"
+          >
+            {loginLoading ? (
+              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-slate-400"></div>
+            ) : (
+              'Entrar como Visitante'
+            )}
+          </Button>
+        </div>
+
+        <p className="text-[10px] text-slate-400 uppercase tracking-widest font-bold">Acesso seguro e simplificado</p>
       </div>
     </div>
   );
@@ -445,8 +608,15 @@ function AppContent() {
                   </div>
                 </div>
                 <div className="text-center">
-                  <h4 className="text-lg font-black text-slate-900 dark:text-slate-100 tracking-tight">{user?.displayName}</h4>
-                  <p className="text-xs text-slate-500 font-medium">{user?.email}</p>
+                  <h4 className="text-lg font-black text-slate-900 dark:text-slate-100 tracking-tight">
+                    {user?.isAnonymous ? 'Visitante' : (user?.displayName || 'Usuário')}
+                  </h4>
+                  <p className="text-xs text-slate-500 font-medium">{user?.email || 'Acesso Temporário'}</p>
+                  {user?.isAnonymous && (
+                    <div className="mt-2 inline-block px-2 py-0.5 bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 text-[10px] font-black uppercase tracking-widest rounded-full">
+                      Conta não vinculada
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -505,7 +675,32 @@ function AppContent() {
                   )}
                 </div>
 
-                <Button variant="ghost" onClick={() => signOut(auth)} className="w-full h-11 rounded-2xl text-rose-600 font-bold hover:bg-rose-50 dark:hover:bg-rose-500/10">
+                <div className="p-4 bg-slate-50 dark:bg-slate-900 rounded-2xl space-y-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-full bg-white dark:bg-slate-800 flex items-center justify-center shadow-sm">
+                      <Download size={16} className="text-slate-600 dark:text-slate-400" />
+                    </div>
+                    <span className="text-sm font-bold text-slate-700 dark:text-slate-300">Backup de Dados</span>
+                  </div>
+                  <Button variant="secondary" onClick={exportData} className="w-full h-11 rounded-xl font-bold">
+                    Exportar JSON
+                  </Button>
+                  <p className="text-[10px] text-slate-400 text-center">Baixe uma cópia de todos os seus dados para segurança.</p>
+                </div>
+
+                <div className="p-4 bg-rose-50 dark:bg-rose-900/10 rounded-2xl space-y-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-full bg-white dark:bg-slate-800 flex items-center justify-center shadow-sm">
+                      <Trash2 size={16} className="text-rose-600" />
+                    </div>
+                    <span className="text-sm font-bold text-rose-700 dark:text-rose-400">Zona de Perigo</span>
+                  </div>
+                  <Button variant="ghost" onClick={clearAllData} className="w-full h-11 rounded-xl font-bold text-rose-600 hover:bg-rose-100 dark:hover:bg-rose-900/30">
+                    Limpar Todos os Dados
+                  </Button>
+                </div>
+
+                <Button variant="ghost" onClick={handleLogout} className="w-full h-11 rounded-2xl text-rose-600 font-bold hover:bg-rose-50 dark:hover:bg-rose-500/10">
                   <LogOut size={18} className="mr-2" /> Sair da Conta
                 </Button>
               </div>
