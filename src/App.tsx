@@ -1,18 +1,12 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
-  db, 
-  collection, query, where, onSnapshot, addDoc, deleteDoc, doc, setDoc,
-  OperationType, handleFirestoreError,
-  writeBatch, getDocs
-} from './firebase';
-import { 
-  format, startOfMonth, endOfMonth, eachDayOfInterval, parseISO 
+  format, startOfMonth, endOfMonth, eachDayOfInterval 
 } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { 
-  Calendar as CalendarIcon, LogIn, Menu, Settings, X, CreditCard, Download, Upload, Sun, Moon, Fingerprint, ShieldCheck, LogOut, Lock, ChevronLeft, Trash2
+  Calendar as CalendarIcon, Menu, Settings, X, CreditCard, Download, Upload, Sun, Moon, Fingerprint, ShieldCheck, Lock, ChevronLeft, Trash2
 } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
 
@@ -33,8 +27,14 @@ function AppContent() {
   const [user] = useState({ uid: 'public-user', displayName: 'Administrador' });
   const [loading, setLoading] = useState(false);
 
-  const [employees, setEmployees] = useState<Employee[]>([]);
-  const [attendance, setAttendance] = useState<AttendanceRecord[]>([]);
+  const [employees, setEmployees] = useState<Employee[]>(() => {
+    const saved = localStorage.getItem('pontofacil_employees');
+    return saved ? JSON.parse(saved) : [];
+  });
+  const [attendance, setAttendance] = useState<AttendanceRecord[]>(() => {
+    const saved = localStorage.getItem('pontofacil_attendance');
+    return saved ? JSON.parse(saved) : [];
+  });
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [selectedEmployeeId, setSelectedEmployeeId] = useState<string | null>(null);
   const [isAddEmployeeOpen, setIsAddEmployeeOpen] = useState(false);
@@ -48,7 +48,10 @@ function AppContent() {
     return false;
   });
 
-  const [userConfig, setUserConfig] = useState<UserConfig | null>(null);
+  const [userConfig, setUserConfig] = useState<UserConfig | null>(() => {
+    const saved = localStorage.getItem('pontofacil_config');
+    return saved ? JSON.parse(saved) : { ownerId: 'public-user' };
+  });
   const [isLocked, setIsLocked] = useState(false);
   const [newPin, setNewPin] = useState('');
   const [isSettingPin, setIsSettingPin] = useState(false);
@@ -94,37 +97,18 @@ function AppContent() {
   }, []);
 
   useEffect(() => {
-    if (!user) return;
-    const unsubscribe = onSnapshot(doc(db, 'userConfigs', user.uid), (snapshot) => {
-      if (snapshot.exists()) {
-        const config = snapshot.data() as UserConfig;
-        setUserConfig(config);
-      } else {
-        setUserConfig({ ownerId: user.uid });
-      }
-      setLoading(false);
-    }, (err) => {
-      console.error("Error loading user config", err);
-      setLoading(false);
-    });
-    return unsubscribe;
-  }, [user]);
+    localStorage.setItem('pontofacil_employees', JSON.stringify(employees));
+  }, [employees]);
 
   useEffect(() => {
-    if (!user) return;
-    const employeesQuery = query(collection(db, 'employees'), where('ownerId', '==', user.uid));
-    const unsubscribeEmployees = onSnapshot(employeesQuery, (snapshot) => {
-      setEmployees(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Employee)));
-    }, (err) => handleFirestoreError(err, OperationType.LIST, 'employees'));
+    localStorage.setItem('pontofacil_attendance', JSON.stringify(attendance));
+  }, [attendance]);
 
-    const monthStr = format(currentMonth, 'yyyy-MM');
-    const attendanceQuery = query(collection(db, 'attendance'), where('ownerId', '==', user.uid), where('monthYear', '==', monthStr));
-    const unsubscribeAttendance = onSnapshot(attendanceQuery, (snapshot) => {
-      setAttendance(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as AttendanceRecord)));
-    }, (err) => handleFirestoreError(err, OperationType.LIST, 'attendance'));
-
-    return () => { unsubscribeEmployees(); unsubscribeAttendance(); };
-  }, [user, currentMonth, isLocked]);
+  useEffect(() => {
+    if (userConfig) {
+      localStorage.setItem('pontofacil_config', JSON.stringify(userConfig));
+    }
+  }, [userConfig]);
 
   const showToast = (message: string, type: 'success' | 'error' = 'success') => setToast({ message, type });
 
@@ -156,14 +140,10 @@ function AppContent() {
       message: 'ATENÇÃO: Isso apagará permanentEMENTE todos os funcionários e registros de ponto. Esta ação não pode ser desfeita. Deseja continuar?',
       onConfirm: async () => {
         try {
-          const batch = writeBatch(db);
-          const empSnap = await getDocs(query(collection(db, 'employees'), where('ownerId', '==', user.uid)));
-          const attSnap = await getDocs(query(collection(db, 'attendance'), where('ownerId', '==', user.uid)));
-          
-          empSnap.forEach(d => batch.delete(d.ref));
-          attSnap.forEach(d => batch.delete(d.ref));
-          
-          await batch.commit();
+          setEmployees([]);
+          setAttendance([]);
+          localStorage.removeItem('pontofacil_employees');
+          localStorage.removeItem('pontofacil_attendance');
           showToast('Todos os dados foram apagados.');
           setSelectedEmployeeId(null);
         } catch (err) {
@@ -175,25 +155,32 @@ function AppContent() {
     });
   };
 
-  const handleLogout = () => {
-    showToast('O login foi desativado neste aplicativo.', 'error');
-  };
-
   const addEmployee = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user || !empForm.name.trim() || isSubmitting) return;
     setIsSubmitting(true);
     try {
       const rate = parseFloat(empForm.dailyRate.replace(',', '.'));
-      await addDoc(collection(db, 'employees'), {
-        name: empForm.name.trim(), role: empForm.role.trim(), dailyRate: isNaN(rate) ? 0 : rate,
-        pixKey: empForm.pix.trim(), bankName: empForm.bankName.trim(), bankAgency: empForm.bankAgency.trim(),
-        bankAccount: empForm.bankAccount.trim(), ownerId: user.uid, createdAt: new Date().toISOString()
-      });
+      const newEmployee: Employee = {
+        id: Date.now().toString(),
+        name: empForm.name.trim(),
+        role: empForm.role.trim(),
+        dailyRate: isNaN(rate) ? 0 : rate,
+        pixKey: empForm.pix.trim(),
+        bankName: empForm.bankName.trim(),
+        bankAgency: empForm.bankAgency.trim(),
+        bankAccount: empForm.bankAccount.trim(),
+        ownerId: user.uid,
+        createdAt: new Date().toISOString()
+      };
+      setEmployees(prev => [...prev, newEmployee]);
       showToast('Funcionário cadastrado!');
       setEmpForm({ name: '', role: '', dailyRate: '', pix: '', bankName: '', bankAgency: '', bankAccount: '' });
       setIsAddEmployeeOpen(false);
-    } catch (err) { showToast('Erro ao cadastrar', 'error'); handleFirestoreError(err, OperationType.CREATE, 'employees'); }
+    } catch (err) { 
+      showToast('Erro ao cadastrar', 'error'); 
+      console.error(err);
+    }
     finally { setIsSubmitting(false); }
   };
 
@@ -213,15 +200,27 @@ function AppContent() {
     setIsSubmitting(true);
     try {
       const rate = parseFloat(empForm.dailyRate.replace(',', '.'));
-      await setDoc(doc(db, 'employees', selectedEmployeeId), {
-        name: empForm.name.trim(), role: empForm.role.trim(), dailyRate: isNaN(rate) ? 0 : rate,
-        pixKey: empForm.pix.trim(), bankName: empForm.bankName.trim(), bankAgency: empForm.bankAgency.trim(),
-        bankAccount: empForm.bankAccount.trim(), ownerId: user.uid,
-        createdAt: employees.find(e => e.id === selectedEmployeeId)?.createdAt || new Date().toISOString()
-      }, { merge: true });
+      setEmployees(prev => prev.map(emp => {
+        if (emp.id === selectedEmployeeId) {
+          return {
+            ...emp,
+            name: empForm.name.trim(),
+            role: empForm.role.trim(),
+            dailyRate: isNaN(rate) ? 0 : rate,
+            pixKey: empForm.pix.trim(),
+            bankName: empForm.bankName.trim(),
+            bankAgency: empForm.bankAgency.trim(),
+            bankAccount: empForm.bankAccount.trim(),
+          };
+        }
+        return emp;
+      }));
       showToast('Dados atualizados!');
       setIsEditEmployeeOpen(false);
-    } catch (err) { showToast('Erro ao atualizar', 'error'); handleFirestoreError(err, OperationType.UPDATE, 'employees'); }
+    } catch (err) { 
+      showToast('Erro ao atualizar', 'error'); 
+      console.error(err);
+    }
     finally { setIsSubmitting(false); }
   };
 
@@ -232,11 +231,12 @@ function AppContent() {
       message: 'Tem certeza que deseja excluir este funcionário? Todos os registros de ponto associados serão perdidos.',
       onConfirm: async () => {
         try { 
-          await deleteDoc(doc(db, 'employees', id)); 
+          setEmployees(prev => prev.filter(emp => emp.id !== id));
+          setAttendance(prev => prev.filter(att => att.employeeId !== id));
           if (selectedEmployeeId === id) setSelectedEmployeeId(null); 
           showToast('Funcionário excluído com sucesso', 'success');
         } catch (err) { 
-          handleFirestoreError(err, OperationType.DELETE, 'employees'); 
+          console.error(err);
           showToast('Erro ao excluir funcionário', 'error');
         }
         setConfirmModal(prev => ({ ...prev, isOpen: false }));
@@ -251,12 +251,12 @@ function AppContent() {
       return;
     }
     try { 
-      await setDoc(doc(db, 'userConfigs', user.uid), { pin: newPin, ownerId: user.uid }, { merge: true }); 
+      setUserConfig(prev => ({ ...prev!, pin: newPin }));
       setIsSettingPin(false); 
       setNewPin(''); 
       showToast('PIN configurado com sucesso!');
     } catch (err) { 
-      handleFirestoreError(err, OperationType.UPDATE, 'userConfigs');
+      console.error(err);
       showToast('Erro ao salvar PIN', 'error');
     }
   };
@@ -269,7 +269,7 @@ function AppContent() {
       message: 'Tem certeza que deseja remover o PIN de segurança? Seu dashboard ficará acessível imediatamente após o login.',
       onConfirm: async () => {
         try { 
-          await setDoc(doc(db, 'userConfigs', user.uid), { pin: null, ownerId: user.uid }, { merge: true }); 
+          setUserConfig(prev => ({ ...prev!, pin: undefined }));
           showToast('PIN removido com sucesso', 'success');
         } catch (err) { 
           console.error(err); 
@@ -339,21 +339,26 @@ function AppContent() {
         const recordId = `${attendanceModal.employeeId}_${dateStr}`;
         try {
           if (type === null) {
-            await deleteDoc(doc(db, 'attendance', recordId));
+            setAttendance(prev => prev.filter(att => att.id !== recordId));
             showToast('Registro removido');
           } else {
-            await setDoc(doc(db, 'attendance', recordId), { 
+            const newRecord: AttendanceRecord = { 
+              id: recordId,
               employeeId: attendanceModal.employeeId, 
               date: dateStr, 
               type, 
               monthYear: format(attendanceModal.date, 'yyyy-MM'), 
               ownerId: user.uid 
+            };
+            setAttendance(prev => {
+              const filtered = prev.filter(att => att.id !== recordId);
+              return [...filtered, newRecord];
             });
             showToast('Ponto registrado!');
           }
         } catch (err) {
           showToast('Erro ao salvar registro', 'error');
-          handleFirestoreError(err, OperationType.WRITE, 'attendance');
+          console.error(err);
         }
         setAttendanceModal(p => ({ ...p, isOpen: false }));
       }} date={attendanceModal.date || new Date()} currentType={attendanceModal.currentType} />
@@ -504,10 +509,6 @@ function AppContent() {
                     Limpar Todos os Dados
                   </Button>
                 </div>
-
-                <Button variant="ghost" onClick={handleLogout} className="w-full h-11 rounded-2xl text-rose-600 font-bold hover:bg-rose-50 dark:hover:bg-rose-500/10">
-                  <LogOut size={18} className="mr-2" /> Desativar Acesso
-                </Button>
               </div>
             </div>
           </Card>

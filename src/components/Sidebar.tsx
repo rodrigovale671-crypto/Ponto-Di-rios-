@@ -1,6 +1,6 @@
 import React from 'react';
 import { 
-  LayoutDashboard, Users, Calendar, Settings, LogOut 
+  LayoutDashboard, Users, Calendar, Settings 
 } from 'lucide-react';
 import { cn } from './UI';
 export const Sidebar = ({ 

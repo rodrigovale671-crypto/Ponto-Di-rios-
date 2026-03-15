@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { Lock, X } from 'lucide-react';
 import { cn } from './UI';
-import { signOut, auth } from '../firebase';
 
 export const LockScreen = ({ onUnlock, userPin }: { onUnlock: () => void; userPin: string }) => {
   const [pin, setPin] = useState('');
@@ -79,12 +78,7 @@ export const LockScreen = ({ onUnlock, userPin }: { onUnlock: () => void; userPi
         </div>
 
         <div className="pt-4">
-          <button 
-            onClick={() => signOut(auth)}
-            className="text-slate-500 hover:text-slate-300 text-sm font-medium transition-colors"
-          >
-            Sair da Conta
-          </button>
+          <p className="text-slate-600 text-xs">PIN de segurança ativo</p>
         </div>
       </div>
     </div>
