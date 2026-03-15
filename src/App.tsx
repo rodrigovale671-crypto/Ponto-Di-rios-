@@ -226,9 +226,20 @@ function AppContent() {
   };
 
   const savePin = async () => {
-    if (!user || !newPin.match(/^\d{4,6}$/)) return alert("PIN inválido.");
-    try { await setDoc(doc(db, 'userConfigs', user.uid), { pin: newPin, ownerId: user.uid }, { merge: true }); setIsSettingPin(false); setNewPin(''); }
-    catch (err) { console.error(err); }
+    if (!user) return;
+    if (!newPin.match(/^\d{4,6}$/)) {
+      showToast('PIN deve ter entre 4 e 6 dígitos', 'error');
+      return;
+    }
+    try { 
+      await setDoc(doc(db, 'userConfigs', user.uid), { pin: newPin, ownerId: user.uid }, { merge: true }); 
+      setIsSettingPin(false); 
+      setNewPin(''); 
+      showToast('PIN configurado com sucesso!');
+    } catch (err) { 
+      handleFirestoreError(err, OperationType.UPDATE, 'userConfigs');
+      showToast('Erro ao salvar PIN', 'error');
+    }
   };
 
   const removePin = async () => {
@@ -341,12 +352,28 @@ function AppContent() {
         onCancel={() => setConfirmModal(prev => ({ ...prev, isOpen: false }))}
       />
       <AnimatePresence>{toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}</AnimatePresence>
-      <AttendanceModal isOpen={attendanceModal.isOpen} onClose={() => setAttendanceModal(p => ({ ...p, isOpen: false }))} onSelect={(type) => {
+      <AttendanceModal isOpen={attendanceModal.isOpen} onClose={() => setAttendanceModal(p => ({ ...p, isOpen: false }))} onSelect={async (type) => {
         if (!user || !attendanceModal.employeeId || !attendanceModal.date) return;
         const dateStr = format(attendanceModal.date, 'yyyy-MM-dd');
         const recordId = `${attendanceModal.employeeId}_${dateStr}`;
-        if (type === null) deleteDoc(doc(db, 'attendance', recordId));
-        else setDoc(doc(db, 'attendance', recordId), { employeeId: attendanceModal.employeeId, date: dateStr, type, monthYear: format(attendanceModal.date, 'yyyy-MM'), ownerId: user.uid });
+        try {
+          if (type === null) {
+            await deleteDoc(doc(db, 'attendance', recordId));
+            showToast('Registro removido');
+          } else {
+            await setDoc(doc(db, 'attendance', recordId), { 
+              employeeId: attendanceModal.employeeId, 
+              date: dateStr, 
+              type, 
+              monthYear: format(attendanceModal.date, 'yyyy-MM'), 
+              ownerId: user.uid 
+            });
+            showToast('Ponto registrado!');
+          }
+        } catch (err) {
+          showToast('Erro ao salvar registro', 'error');
+          handleFirestoreError(err, OperationType.WRITE, 'attendance');
+        }
         setAttendanceModal(p => ({ ...p, isOpen: false }));
       }} date={attendanceModal.date || new Date()} currentType={attendanceModal.currentType} />
 

@@ -195,28 +195,34 @@ export const Dashboard = ({
                 <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-blue-500" /> Meias</div>
               </div>
             </div>
-            <div className="h-[300px] w-full flex items-center justify-center">
+            <div className="h-[350px] w-full flex items-center justify-center">
               {stats.presencasNoMes + stats.meiasNoMes > 0 ? (
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={chartData}>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+                  <BarChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" strokeOpacity={0.5} />
                     <XAxis 
                       dataKey="name" 
                       axisLine={false} 
                       tickLine={false} 
-                      tick={{ fontSize: 10, fontWeight: 600, fill: '#94a3b8' }} 
+                      tick={{ fontSize: 10, fontWeight: 700, fill: '#94a3b8' }} 
+                      dy={10}
                     />
                     <YAxis 
                       axisLine={false} 
                       tickLine={false} 
-                      tick={{ fontSize: 10, fontWeight: 600, fill: '#94a3b8' }} 
+                      tick={{ fontSize: 10, fontWeight: 700, fill: '#94a3b8' }} 
                     />
                     <Tooltip 
-                      cursor={{ fill: '#f1f5f9' }}
-                      contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
+                      cursor={{ fill: '#f1f5f9', radius: 4 }}
+                      contentStyle={{ 
+                        borderRadius: '16px', 
+                        border: 'none', 
+                        boxShadow: '0 20px 25px -5px rgb(0 0 0 / 0.1)',
+                        padding: '12px'
+                      }}
                     />
-                    <Bar dataKey="presencas" fill="#34d399" radius={[4, 4, 0, 0]} barSize={8} />
-                    <Bar dataKey="meias" fill="#60a5fa" radius={[4, 4, 0, 0]} barSize={8} />
+                    <Bar dataKey="presencas" fill="#10b981" radius={[4, 4, 0, 0]} barSize={12} />
+                    <Bar dataKey="meias" fill="#3b82f6" radius={[4, 4, 0, 0]} barSize={12} />
                   </BarChart>
                 </ResponsiveContainer>
               ) : (
@@ -239,7 +245,7 @@ export const Dashboard = ({
               <TrendingUp size={20} className="text-emerald-500" />
               Distribuição
             </h3>
-            <div className="h-[200px] w-full relative">
+            <div className="h-[280px] w-full relative">
               {distributionData.length > 0 ? (
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
@@ -247,16 +253,19 @@ export const Dashboard = ({
                       data={distributionData}
                       cx="50%"
                       cy="50%"
-                      innerRadius={60}
-                      outerRadius={80}
-                      paddingAngle={5}
+                      innerRadius={70}
+                      outerRadius={95}
+                      paddingAngle={8}
                       dataKey="value"
+                      stroke="none"
                     >
                       {distributionData.map((entry, index) => (
                         <Cell key={`cell-${index}`} fill={entry.color} />
                       ))}
                     </Pie>
-                    <Tooltip />
+                    <Tooltip 
+                      contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
+                    />
                   </PieChart>
                 </ResponsiveContainer>
               ) : (
