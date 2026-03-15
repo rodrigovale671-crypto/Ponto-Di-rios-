@@ -1,0 +1,5 @@
+{
+  "name": "PontoFácil",
+  "description": "Sistema de controle de ponto para equipes com relatórios em PDF e bloqueio por PIN.",
+  "requestFramePermissions": []
+}

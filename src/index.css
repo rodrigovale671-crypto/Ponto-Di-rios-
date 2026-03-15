@@ -1,0 +1,55 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+  --color-bg: #F8FAFC;
+  --color-ink: #0F172A;
+  --color-line: rgba(15, 23, 42, 0.08);
+  --color-card: #FFFFFF;
+}
+
+@layer base {
+  body {
+    @apply bg-[var(--color-bg)] text-[var(--color-ink)] antialiased;
+  }
+}
+
+@layer components {
+  .glass {
+    @apply bg-white/80 dark:bg-slate-900/80 backdrop-blur-md;
+  }
+
+  .pro-card {
+    @apply bg-[var(--color-card)] border border-[var(--color-line)] rounded-2xl shadow-sm dark:bg-slate-900 dark:border-slate-800;
+  }
+
+  .pro-input {
+    @apply w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-transparent focus:bg-white dark:focus:bg-slate-900 focus:ring-2 focus:ring-slate-900 dark:focus:ring-slate-100 outline-none transition-all text-sm font-medium;
+  }
+
+  .sidebar-item {
+    @apply flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200;
+  }
+
+  .insta-nav-item {
+    @apply flex flex-col items-center justify-center gap-1 transition-all duration-200;
+  }
+}
+
+.dark {
+  --color-bg: #020617;
+  --color-ink: #F1F5F9;
+  --color-line: rgba(241, 245, 249, 0.12);
+  --color-card: #0F172A;
+}
+
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-5px); }
+  75% { transform: translateX(5px); }
+}
+
+.animate-shake {
+  animation: shake 0.2s ease-in-out 0s 2;
+}
