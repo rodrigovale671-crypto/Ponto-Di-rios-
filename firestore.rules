@@ -37,21 +37,19 @@ service cloud.firestore {
     // ===============================================================
 
     function isAuthenticated() {
-      return request.auth != null;
+      return true; // Login removido
     }
 
     function isOwner(userId) {
-      return isAuthenticated() && request.auth.uid == userId;
+      return true; // Acesso público por ID de dispositivo
     }
 
     function isDocOwner() {
-      return isAuthenticated() && request.auth.uid == resource.data.ownerId;
+      return true; // Acesso público
     }
 
     function isAdmin() {
-      return isAuthenticated() &&
-        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
-          (request.auth.token.email == "rodrigovale671@gmail.com" && request.auth.token.email_verified == true));
+      return true; // Acesso administrativo liberado
     }
 
     function hasOnlyAllowedFields(fields) {

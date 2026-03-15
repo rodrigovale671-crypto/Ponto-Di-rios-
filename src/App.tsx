@@ -1,10 +1,9 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
-  auth, db, googleProvider, signInWithPopup, signOut, onAuthStateChanged, 
+  db, 
   collection, query, where, onSnapshot, addDoc, deleteDoc, doc, setDoc,
-  OperationType, handleFirestoreError, User,
-  signInWithEmailAndPassword, createUserWithEmailAndPassword, signInAnonymously,
-  sendPasswordResetEmail, writeBatch, getDocs
+  OperationType, handleFirestoreError,
+  writeBatch, getDocs
 } from './firebase';
 import { 
   format, startOfMonth, endOfMonth, eachDayOfInterval, parseISO 
@@ -21,7 +20,6 @@ import { ErrorBoundary } from './components/ErrorBoundary';
 import { Button, Card, cn } from './components/UI';
 import { Toast } from './components/Toast';
 import { Sidebar } from './components/Sidebar';
-import { LockScreen } from './components/LockScreen';
 import { AttendanceModal } from './components/AttendanceModal';
 import { Dashboard } from './components/Dashboard';
 import { Team } from './components/Team';
@@ -31,16 +29,10 @@ import { BottomNav } from './components/BottomNav';
 import { Employee, UserConfig, AttendanceRecord } from './types';
 
 function AppContent() {
-  const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [loadingTimeout, setLoadingTimeout] = useState(false);
+  // Login removed - Using a fixed ID for the application
+  const [user] = useState({ uid: 'public-user', displayName: 'Administrador' });
+  const [loading, setLoading] = useState(false);
 
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      if (loading) setLoadingTimeout(true);
-    }, 6000);
-    return () => clearTimeout(timer);
-  }, [loading]);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [attendance, setAttendance] = useState<AttendanceRecord[]>([]);
   const [currentMonth, setCurrentMonth] = useState(new Date());
@@ -57,16 +49,12 @@ function AppContent() {
   });
 
   const [userConfig, setUserConfig] = useState<UserConfig | null>(null);
-  const [isLocked, setIsLocked] = useState(true);
+  const [isLocked, setIsLocked] = useState(false);
   const [newPin, setNewPin] = useState('');
   const [isSettingPin, setIsSettingPin] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [activeView, setActiveView] = useState<'dashboard' | 'team' | 'calendar'>('dashboard');
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
-  const [loginLoading, setLoginLoading] = useState(false);
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [isRegistering, setIsRegistering] = useState(false);
   
   useEffect(() => {
     (window as any).openSettings = () => setIsSettingsOpen(true);
@@ -102,14 +90,7 @@ function AppContent() {
   }, [darkMode]);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      setUser(user);
-      if (!user) {
-        setLoading(false);
-        setIsLocked(true);
-      }
-    });
-    return unsubscribe;
+    // Auth listeners removed
   }, []);
 
   useEffect(() => {
@@ -118,10 +99,8 @@ function AppContent() {
       if (snapshot.exists()) {
         const config = snapshot.data() as UserConfig;
         setUserConfig(config);
-        if (!config.pin) setIsLocked(false);
       } else {
         setUserConfig({ ownerId: user.uid });
-        setIsLocked(false);
       }
       setLoading(false);
     }, (err) => {
@@ -132,7 +111,7 @@ function AppContent() {
   }, [user]);
 
   useEffect(() => {
-    if (!user || isLocked) return;
+    if (!user) return;
     const employeesQuery = query(collection(db, 'employees'), where('ownerId', '==', user.uid));
     const unsubscribeEmployees = onSnapshot(employeesQuery, (snapshot) => {
       setEmployees(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Employee)));
@@ -149,56 +128,6 @@ function AppContent() {
 
   const showToast = (message: string, type: 'success' | 'error' = 'success') => setToast({ message, type });
 
-  const handleLogin = async (e: React.FormEvent) => { 
-    e.preventDefault();
-    if (!email || !password) return showToast('Preencha todos os campos', 'error');
-    setLoginLoading(true);
-    try { 
-      if (isRegistering) {
-        await createUserWithEmailAndPassword(auth, email, password);
-        showToast('Conta criada com sucesso!');
-      } else {
-        await signInWithEmailAndPassword(auth, email, password);
-      }
-    } catch (err: any) { 
-      console.error(err);
-      let msg = 'Erro ao entrar';
-      if (err.code === 'auth/user-not-found') msg = 'Usuário não encontrado';
-      if (err.code === 'auth/wrong-password') msg = 'Senha incorreta';
-      if (err.code === 'auth/email-already-in-use') msg = 'E-mail já cadastrado';
-      if (err.code === 'auth/weak-password') msg = 'Senha muito fraca';
-      if (err.code === 'auth/operation-not-allowed') msg = 'Login por e-mail não está habilitado no Firebase Console';
-      if (err.code === 'auth/invalid-email') msg = 'E-mail inválido';
-      showToast(msg, 'error');
-    } finally {
-      setLoginLoading(false);
-    }
-  };
-
-  const handleResetPassword = async () => {
-    if (!email) return showToast('Digite seu e-mail para recuperar a senha', 'error');
-    try {
-      await sendPasswordResetEmail(auth, email);
-      showToast('E-mail de recuperação enviado!');
-    } catch (err: any) {
-      console.error(err);
-      showToast('Erro ao enviar e-mail de recuperação', 'error');
-    }
-  };
-
-  const handleAnonymousLogin = async () => {
-    setLoginLoading(true);
-    try {
-      await signInAnonymously(auth);
-    } catch (err: any) {
-      console.error(err);
-      let msg = 'Erro ao entrar como visitante';
-      if (err.code === 'auth/operation-not-allowed') msg = 'Login anônimo não está habilitado no Firebase Console';
-      showToast(msg, 'error');
-    } finally {
-      setLoginLoading(false);
-    }
-  };
   const exportData = () => {
     const data = {
       employees,
@@ -206,8 +135,7 @@ function AppContent() {
       exportDate: new Date().toISOString(),
       user: {
         uid: user?.uid,
-        email: user?.email,
-        isAnonymous: user?.isAnonymous
+        displayName: user?.displayName
       }
     };
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
@@ -248,15 +176,7 @@ function AppContent() {
   };
 
   const handleLogout = () => {
-    setConfirmModal({
-      isOpen: true,
-      title: 'Sair da Conta',
-      message: 'Tem certeza que deseja sair? Se você estiver usando uma conta de visitante, seus dados podem ser perdidos se você não vincular um e-mail.',
-      onConfirm: () => {
-        signOut(auth);
-        setConfirmModal(prev => ({ ...prev, isOpen: false }));
-      }
-    });
+    showToast('O login foi desativado neste aplicativo.', 'error');
   };
 
   const addEmployee = async (e: React.FormEvent) => {
@@ -400,110 +320,8 @@ function AppContent() {
   if (loading) return (
     <div className="min-h-screen flex flex-col items-center justify-center gap-6 bg-slate-50 dark:bg-slate-950">
       <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-slate-900 dark:border-slate-100"></div>
-      {loadingTimeout && (
-        <div className="text-center space-y-4 animate-in fade-in duration-500">
-          <p className="text-sm text-slate-500 dark:text-slate-400 font-medium">Isso está demorando mais que o esperado...</p>
-          <Button variant="secondary" onClick={() => window.location.reload()}>Recarregar Página</Button>
-        </div>
-      )}
     </div>
   );
-
-  if (!user) return (
-    <div className="min-h-screen flex flex-col items-center justify-center p-4 bg-slate-50 dark:bg-slate-950">
-      <AnimatePresence>{toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}</AnimatePresence>
-      <div className="w-full max-w-md text-center space-y-8 p-8 bg-white dark:bg-slate-900 rounded-3xl shadow-xl border border-slate-200 dark:border-slate-800">
-        <div className="w-20 h-20 bg-slate-900 dark:bg-slate-100 rounded-[2rem] flex items-center justify-center text-white dark:text-slate-900 mx-auto shadow-2xl shadow-slate-900/20">
-          <CalendarIcon size={40} />
-        </div>
-        <div className="space-y-2">
-          <h1 className="text-4xl font-black tracking-tighter text-slate-900 dark:text-slate-100">PontoFácil</h1>
-          <p className="text-slate-500 dark:text-slate-400 font-medium">Gestão de equipe simplificada</p>
-        </div>
-
-        <form onSubmit={handleLogin} className="space-y-4 text-left">
-          <div className="space-y-1">
-            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 px-1">E-mail</label>
-            <input 
-              type="email" 
-              value={email} 
-              onChange={e => setEmail(e.target.value)} 
-              className="pro-input h-12 bg-slate-50 dark:bg-slate-800 border-none rounded-xl font-bold w-full" 
-              placeholder="seu@email.com" 
-              required 
-            />
-          </div>
-          <div className="space-y-1">
-            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 px-1">Senha</label>
-            <input 
-              type="password" 
-              value={password} 
-              onChange={e => setPassword(e.target.value)} 
-              className="pro-input h-12 bg-slate-50 dark:bg-slate-800 border-none rounded-xl font-bold w-full" 
-              placeholder="••••••••" 
-              required 
-            />
-          </div>
-          
-          <Button 
-            type="submit"
-            disabled={loginLoading}
-            className="w-full py-7 text-lg gap-3 rounded-2xl shadow-lg shadow-slate-900/10"
-          >
-            {loginLoading ? (
-              <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
-            ) : (
-              <>
-                <LogIn size={22} /> 
-                <span>{isRegistering ? 'Criar Conta' : 'Entrar'}</span>
-              </>
-            )}
-          </Button>
-
-          {!isRegistering && (
-            <button 
-              type="button"
-              onClick={handleResetPassword}
-              className="w-full text-xs font-bold text-slate-400 hover:text-slate-600 transition-colors"
-            >
-              Esqueci minha senha
-            </button>
-          )}
-        </form>
-
-        <div className="flex flex-col gap-4">
-          <button 
-            onClick={() => setIsRegistering(!isRegistering)}
-            className="text-sm font-bold text-slate-500 hover:text-slate-900 dark:hover:text-slate-100 transition-colors"
-          >
-            {isRegistering ? 'Já tem uma conta? Entre aqui' : 'Não tem conta? Cadastre-se'}
-          </button>
-          
-          <div className="relative">
-            <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-slate-200 dark:border-slate-800"></div></div>
-            <div className="relative flex justify-center text-[10px] uppercase font-black tracking-widest bg-white dark:bg-slate-900 px-2 text-slate-400">Ou</div>
-          </div>
-
-          <Button 
-            variant="ghost" 
-            onClick={handleAnonymousLogin}
-            disabled={loginLoading}
-            className="w-full h-12 rounded-xl font-bold text-slate-500"
-          >
-            {loginLoading ? (
-              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-slate-400"></div>
-            ) : (
-              'Entrar como Visitante'
-            )}
-          </Button>
-        </div>
-
-        <p className="text-[10px] text-slate-400 uppercase tracking-widest font-bold">Acesso seguro e simplificado</p>
-      </div>
-    </div>
-  );
-
-  if (isLocked && userConfig?.pin) return <LockScreen userPin={userConfig.pin} onUnlock={() => setIsLocked(false)} />;
 
   return (
     <div className="min-h-screen flex flex-col lg:flex-row overflow-hidden bg-white dark:bg-slate-950">
@@ -544,8 +362,6 @@ function AppContent() {
         <Sidebar 
           activeView={activeView} 
           setActiveView={setActiveView} 
-          user={user} 
-          onLogout={handleLogout} 
           onOpenSettings={() => setIsSettingsOpen(true)} 
         />
       </div>
@@ -600,23 +416,12 @@ function AppContent() {
               <div className="flex flex-col items-center gap-4 py-4">
                 <div className="w-24 h-24 rounded-full p-[3px] bg-gradient-to-tr from-amber-500 via-rose-500 to-purple-600">
                   <div className="w-full h-full rounded-full bg-white dark:bg-slate-950 flex items-center justify-center border-4 border-white dark:border-slate-950 overflow-hidden">
-                    {user?.photoURL ? (
-                      <img src={user.photoURL} alt={user.displayName || ''} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                    ) : (
-                      <div className="text-3xl font-black italic text-slate-900 dark:text-slate-100">{user?.displayName?.charAt(0)}</div>
-                    )}
+                    <div className="text-3xl font-black italic text-slate-900 dark:text-slate-100">A</div>
                   </div>
                 </div>
                 <div className="text-center">
-                  <h4 className="text-lg font-black text-slate-900 dark:text-slate-100 tracking-tight">
-                    {user?.isAnonymous ? 'Visitante' : (user?.displayName || 'Usuário')}
-                  </h4>
-                  <p className="text-xs text-slate-500 font-medium">{user?.email || 'Acesso Temporário'}</p>
-                  {user?.isAnonymous && (
-                    <div className="mt-2 inline-block px-2 py-0.5 bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 text-[10px] font-black uppercase tracking-widest rounded-full">
-                      Conta não vinculada
-                    </div>
-                  )}
+                  <h4 className="text-lg font-black text-slate-900 dark:text-slate-100 tracking-tight">Administrador</h4>
+                  <p className="text-xs text-slate-500 font-medium">Acesso Direto Habilitado</p>
                 </div>
               </div>
 
@@ -701,7 +506,7 @@ function AppContent() {
                 </div>
 
                 <Button variant="ghost" onClick={handleLogout} className="w-full h-11 rounded-2xl text-rose-600 font-bold hover:bg-rose-50 dark:hover:bg-rose-500/10">
-                  <LogOut size={18} className="mr-2" /> Sair da Conta
+                  <LogOut size={18} className="mr-2" /> Desativar Acesso
                 </Button>
               </div>
             </div>
